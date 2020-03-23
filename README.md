@@ -10,10 +10,6 @@ Requirements
 * Access to maven central
 * Kafka broker
 
-Features
-----------
-* TODO
-
 Building application
 ----------
 Target creates packaged zip with executable jar (see build.gradle for exact location of zip package).
