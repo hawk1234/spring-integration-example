@@ -44,8 +44,7 @@ public class ProcessingConfiguration {
 
     @Bean
     public IntegrationFlow processingFlow(ProcessingProperties processingProperties,
-                                          KafkaTemplate<?, ?> kafkaTemplate,
-                                          MessageGroupStore messageGroupStore) {
+                                          KafkaTemplate<?, ?> kafkaTemplate) {
         return IntegrationFlows.from(ProcessingGateway.class)
                 .split(Files.splitter()
                         .markers()
@@ -69,14 +68,7 @@ public class ProcessingConfiguration {
                         .subFlowMapping(FileMarker.class, subflow -> subflow
                                 .log(Level.INFO, msg -> "======================== MARKER MSG: " + msg)
                                 .channel(ProcessingConstants.AGGREGATION_CHANNEL)
-                                .aggregate(aggregatorSpec -> aggregatorSpec
-                                        .releaseStrategy(MessageGroup::isComplete)
-                                        .correlationStrategy(message -> message.getHeaders().get(FileHeaders.FILENAME))
-                                        .messageStore(messageGroupStore)
-                                        .outputProcessor(mg -> ((RowCountingMessageGroup) mg).getProcessingResult())
-                                        .sendPartialResultOnExpiry(true)
-                                        .groupTimeout(5*1000))
-                                .log(Level.INFO, msg -> "=============================== AGGREGATED MSG: " + msg)))
+                                .nullChannel()))
                 .get();
     }
 
@@ -101,6 +93,21 @@ public class ProcessingConfiguration {
             }
         });
         return ret;
+    }
+
+    @Bean
+    public IntegrationFlow aggregationFlow(MessageGroupStore messageGroupStore) {
+        return IntegrationFlows.from(ProcessingConstants.AGGREGATION_CHANNEL)
+                .log(Level.INFO, msg -> "================================== AGG CHANNEL: " + msg)
+                .aggregate(aggregatorSpec -> aggregatorSpec
+                        .releaseStrategy(MessageGroup::isComplete)
+                        .correlationStrategy(message -> message.getHeaders().get(FileHeaders.FILENAME))
+                        .messageStore(messageGroupStore)
+                        .outputProcessor(mg -> ((RowCountingMessageGroup) mg).getProcessingResult())
+                        .sendPartialResultOnExpiry(true)
+                        .groupTimeout(5*1000))
+                .logAndReply(Level.INFO, msg -> "Produced aggregated message. End of flow for file: "
+                        + ((FileProcessingResultDescriptor) msg.getPayload()).getFileName());
     }
 
     @Bean
